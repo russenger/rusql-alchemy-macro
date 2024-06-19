@@ -216,7 +216,8 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
             format!("delete from {name} where {the_primary_key}=?1;").replace(".clone()", "");
         quote! {
             async fn delete(&self, conn: &Connection) -> bool {
-                sqlx::query(&#query.replace("?", rusql_alchemy::get_placeholder(conn)).replace("$", rusql_alchemy::get_placeholder(conn)))
+                let ph = rusql_alchemy::get_placeholder();
+                sqlx::query(&#query.replace("?", ph).replace("$", ph))
                     .bind(self.#the_primary_key)
                     .execute(conn)
                     .await
