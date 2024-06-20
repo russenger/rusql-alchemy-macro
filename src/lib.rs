@@ -228,7 +228,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[async_trait]
-        impl Model<sqlx::any::AnyRow> for #name {
+        impl Model for #name {
             const NAME: &'static str = stringify!(#name);
             #schema
             #primary_key
