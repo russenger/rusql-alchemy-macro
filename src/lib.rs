@@ -217,7 +217,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
         quote! {
             async fn delete(&self, conn: &Connection) -> bool {
                 let placeholder = rusql_alchemy::PLACEHOLDER.to_string();
-                sqlx::query(&#query.replace("?", placeholder).replace("$", placeholder))
+                sqlx::query(&#query.replace("?", &placeholder).replace("$", &placeholder))
                     .bind(self.#the_primary_key)
                     .execute(conn)
                     .await
