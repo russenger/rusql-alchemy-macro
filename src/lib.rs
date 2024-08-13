@@ -123,9 +123,12 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                 "Float" => quote! { float },
                 "Text" => quote! { text },
                 "Date" => quote! { varchar(10) },
-                "Boolean" | "bool" => quote! { integer },
+                "Boolean" => quote! { integer },
                 "DateTime" => quote! { varchar(40) },
-                p_type => panic!("{}", p_type),
+                 p_type => panic!(
+                    "Unexpected field type: '{}'. Expected one of: 'Serial', 'Integer', 'String', 'Float', 'Text', 'Date', 'Boolean', 'DateTime'. Please check the field type.",
+                    p_type
+                ),
             };
 
             let primary_key = if is_primary_key {

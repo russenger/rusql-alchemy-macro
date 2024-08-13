@@ -22,7 +22,7 @@ dependencies = [
 
 [[package]]
 name = "rusql-alchemy-macro"
-version = "0.1.2"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
