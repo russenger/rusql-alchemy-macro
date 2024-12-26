@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit};
+use syn::{
+    parse_macro_input, Data, DeriveInput, Fields, GenericArgument, Lit, PathArguments, Type,
+};
 
 #[proc_macro_derive(Model, attributes(model))]
 pub fn model_derive(input: TokenStream) -> TokenStream {
@@ -23,12 +25,8 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
 
     for field in fields {
         let field_name = field.ident.as_ref().unwrap();
-        let field_type = match &field.ty {
-            syn::Type::Path(type_path) => type_path.path.segments.last().unwrap().ident.to_string(),
-            _ => panic!("Unsupported field type"),
-        };
+        let field_type = extract_inner_type(&field.ty);
 
-        let mut is_nullable = true;
         let mut is_primary_key = false;
         let mut is_auto = false;
         let mut is_unique = false;
@@ -36,6 +34,17 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
         let mut size = None;
         let mut default = quote! {};
         let mut foreign_key = quote! {};
+
+        let is_nullable = match &field.ty {
+            syn::Type::Path(type_path) => {
+                if let Some(segment) = type_path.path.segments.last() {
+                    segment.ident == "Option"
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
 
         for attr in &field.attrs {
             if attr.path.is_ident("model") {
@@ -60,18 +69,14 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                                 if let Lit::Bool(ref lit) = nv.lit {
                                     is_unique = lit.value;
                                 }
-                            } else if nv.path.is_ident("null") {
-                                if let Lit::Bool(ref lit) = nv.lit {
-                                    is_nullable = lit.value;
-                                }
                             } else if nv.path.is_ident("default") {
                                 is_default = true;
                                 if let Lit::Str(ref str) = nv.lit {
                                     default = if str.value() == "now" {
                                         if field_type == "Date" {
-                                            quote! { default current_date}
+                                            quote! { default current_date }
                                         } else if field_type == "DateTime" {
-                                            quote! { default current_timestamp}
+                                            quote! { default current_timestamp }
                                         } else {
                                             panic!("'now' is work only with Date or DateTime");
                                         }
@@ -81,9 +86,9 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                                     }
                                 } else if let Lit::Bool(ref bool) = nv.lit {
                                     default = if bool.value {
-                                        quote! {default 1}
+                                        quote! { default 1 }
                                     } else {
-                                        quote! {default 0}
+                                        quote! { default 0 }
                                     };
                                 } else if let Lit::Int(ref int) = nv.lit {
                                     default = quote! { default #int }
@@ -99,7 +104,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                                     let foreign_key_field = foreign_key_parts[1];
 
                                     foreign_key = quote! {
-                                         references #foreign_key_table(#foreign_key_field)
+                                        references #foreign_key_table(#foreign_key_field)
                                     };
                                 }
                             }
@@ -115,9 +120,9 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                 "Integer" => quote! { integer },
                 "String" => {
                     if let Some(size) = size {
-                        quote! {varchar(#size)}
+                        quote! { varchar(#size) }
                     } else {
-                        quote! {varchar(255)}
+                        quote! { varchar(255) }
                     }
                 }
                 "Float" => quote! { float },
@@ -125,7 +130,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                 "Date" => quote! { varchar(10) },
                 "Boolean" => quote! { integer },
                 "DateTime" => quote! { varchar(40) },
-                 p_type => panic!(
+                p_type => panic!(
                     "Unexpected field type: '{}'. Expected one of: 'Serial', 'Integer', 'String', 'Float', 'Text', 'Date', 'Boolean', 'DateTime'. Please check the field type.",
                     p_type
                 ),
@@ -140,7 +145,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                     create_args.push(quote! { #field_name });
                     quote! {}
                 };
-                quote! { primary key #auto}
+                quote! { primary key #auto }
             } else {
                 create_args.push(quote! { #field_name });
                 update_args.push(quote! { #field_name });
@@ -154,7 +159,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
             let nullable = if is_nullable {
                 quote! {}
             } else {
-                quote! {not null}
+                quote! { not null }
             };
             let unique = if is_unique {
                 quote! { unique }
@@ -242,4 +247,21 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn extract_inner_type(field_type: &Type) -> String {
+    match field_type {
+        Type::Path(type_path) => {
+            let last_segment = type_path.path.segments.last().unwrap();
+            if last_segment.ident == "Option" {
+                if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
+                    if let Some(GenericArgument::Type(inner_type)) = args.args.first() {
+                        return extract_inner_type(inner_type);
+                    }
+                }
+            }
+            last_segment.ident.to_string()
+        }
+        _ => panic!("Unsupported field type"),
+    }
 }
