@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit};
+use syn::{parse_macro_input, Data, DeriveInput, Fields, Lit, LitInt};
 
 #[proc_macro_derive(Model, attributes(model))]
 pub fn model_derive(input: TokenStream) -> TokenStream {
@@ -28,7 +28,6 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
             _ => panic!("Unsupported field type"),
         };
 
-        let mut is_nullable = true;
         let mut is_primary_key = false;
         let mut is_auto = false;
         let mut is_unique = false;
@@ -59,10 +58,6 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                             } else if nv.path.is_ident("unique") {
                                 if let Lit::Bool(ref lit) = nv.lit {
                                     is_unique = lit.value;
-                                }
-                            } else if nv.path.is_ident("null") {
-                                if let Lit::Bool(ref lit) = nv.lit {
-                                    is_nullable = lit.value;
                                 }
                             } else if nv.path.is_ident("default") {
                                 is_default = true;
@@ -110,27 +105,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
         }
 
         let field_schema = {
-            let base_type = match field_type.as_str() {
-                "Serial" => quote! { serial },
-                "Integer" => quote! { integer },
-                "String" => {
-                    if let Some(size) = size {
-                        quote! {varchar(#size)}
-                    } else {
-                        quote! {varchar(255)}
-                    }
-                }
-                "Float" => quote! { float },
-                "Text" => quote! { text },
-                "Date" => quote! { varchar(10) },
-                "Boolean" => quote! { integer },
-                "DateTime" => quote! { varchar(40) },
-                 p_type => panic!(
-                    "Unexpected field type: '{}'. Expected one of: 'Serial', 'Integer', 'String', 'Float', 'Text', 'Date', 'Boolean', 'DateTime'. Please check the field type.",
-                    p_type
-                ),
-            };
-
+            let base_type = generate_sql_type(field_type.as_str(), size);
             let primary_key = if is_primary_key {
                 let auto = if is_auto {
                     quote! { autoincrement }
@@ -151,18 +126,13 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
                 create_args.pop();
             }
 
-            let nullable = if is_nullable {
-                quote! {}
-            } else {
-                quote! {not null}
-            };
             let unique = if is_unique {
                 quote! { unique }
             } else {
                 quote! {}
             };
 
-            quote! { #field_name #base_type #primary_key #unique #default #nullable #foreign_key }
+            quote! { #field_name #base_type #primary_key #unique #default #foreign_key }
         };
 
         schema_fields.push(field_schema);
@@ -242,4 +212,33 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+fn generate_sql_type(field_type: &str, size: Option<LitInt>) -> proc_macro2::TokenStream {
+    let base_type = match field_type {
+        "Serial" => quote! { serial },
+        "Integer" => quote! { integer },
+        "Float" => quote! { float },
+        "Text" => quote! { text },
+        "Date" => quote! { varchar(10) },
+        "Boolean" => quote! { integer },
+        "DateTime" => quote! { varchar(40) },
+        "String" => {
+            if let Some(size) = size {
+                quote! { varchar(#size) }
+            } else {
+                quote! { varchar(255) }
+            }
+        }
+        _ => panic!(
+            "Unexpected field type: '{}'. Expected one of: 'Serial', 'Integer', 'Float', 'Text', 'Date', 'Boolean', 'DateTime', 'String'. Please check the field type.",
+            field_type
+        ),
+    };
+
+    if field_type.starts_with("Option<") {
+        base_type
+    } else {
+        quote! { #base_type not null }
+    }
 }
