@@ -195,7 +195,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
     };
 
     let create = quote! {
-        async fn save(&self, conn: &Connection) -> bool {
+        async fn save(&self, conn: &Connection) -> Result<(), sqlx::Error> {
             Self::create(
                 kwargs!(
                     #(#create_args = self.#create_args),*
@@ -207,7 +207,7 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
     };
 
     let update = quote! {
-        async fn update(&self, conn: &Connection) -> bool {
+        async fn update(&self, conn: &Connection) -> Result<(), sqlx::Error> {
             Self::set(
                 self.#the_primary_key,
                 kwargs!(
@@ -223,13 +223,13 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
         let query =
             format!("delete from {name} where {the_primary_key}=?1;").replace(".clone()", "");
         quote! {
-            async fn delete(&self, conn: &Connection) -> bool {
+            async fn delete(&self, conn: &Connection) -> Result<(),sqlx::Error> {
                 let placeholder = rusql_alchemy::PLACEHOLDER.to_string();
                 sqlx::query(&#query.replace("?", &placeholder).replace("$", &placeholder))
                     .bind(self.#the_primary_key)
                     .execute(conn)
-                    .await
-                    .is_ok()
+                    .await?;
+                Ok(())
             }
         }
     };
