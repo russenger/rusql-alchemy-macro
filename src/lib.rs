@@ -244,6 +244,12 @@ pub fn model_derive(input: TokenStream) -> TokenStream {
             #update
             #delete
         }
+
+        rusql_alchemy::prelude::inventory::submit! {
+            MigrationRegistrar {
+                migrate_fn: #name::migrate
+            }
+        }
     };
 
     TokenStream::from(expanded)
